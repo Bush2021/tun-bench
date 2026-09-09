@@ -1,0 +1,32 @@
+version: "2"
+run:
+  go: "1.26"
+linters:
+  default: none
+  enable:
+    - ineffassign
+    - staticcheck
+    - unused
+    - modernize
+  settings:
+    modernize:
+      disable:
+        - omitzero
+    staticcheck:
+      checks:
+        - all
+        - -QF1008
+        - -ST1003
+        - -QF1001
+        - -SA4023
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - prefix(github.com/sagernet/)
+        - default
+      custom-order: true

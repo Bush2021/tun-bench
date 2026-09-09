@@ -1,0 +1,11 @@
+/.idea/
+/vendor/
+.DS_Store
+CLAUDE.md
+AGENTS.md
+/.claude/
+/tun-bench
+/tun-bench.exe
+*.test
+/bench.json
+/bench.txt
