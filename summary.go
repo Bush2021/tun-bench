@@ -51,12 +51,15 @@ func (r *benchmarkReport) writeSummary(output io.Writer) error {
 	content.WriteString("Forwarding: direct")
 	relayed := common.Uniq(common.Map(common.Filter(r.Cases, func(recorded caseResult) bool {
 		implementation := r.Implementations[recorded.Implementation]
-		return implementation.Type != "sing-box" && implementation.Type != "leaf"
+		return implementation.Relay || implementation.Type != "sing-box" && implementation.Type != "leaf"
 	}), func(recorded caseResult) string { return recorded.Implementation }))
 	if len(relayed) > 0 {
 		fmt.Fprintf(&content, "; SOCKS5 relay for %s", strings.Join(relayed, ", "))
 	}
 	content.WriteByte('\n')
+	if r.Environment.UnverifiedCPU {
+		content.WriteString("CPU placement: unverified; compare cases within this run only\n")
+	}
 
 	type workload struct {
 		ip              int

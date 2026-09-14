@@ -29,7 +29,7 @@ var (
 	setProcessAffinity = kernel32.NewProc("SetProcessAffinityMask")
 )
 
-func preparePlatform() (environment, error) {
+func preparePlatform(unverifiedCPU bool) (environment, error) {
 	groups, _, _ := getGroupCount.Call()
 	if groups != 1 {
 		return environment{}, E.New("CPU measurement currently supports Windows systems with one processor group")
@@ -77,7 +77,12 @@ func preparePlatform() (environment, error) {
 			capacity: uint64(entry[18]),
 		})
 	}
-	placement, err := selectCPUs(cpus)
+	var placement environment
+	if unverifiedCPU {
+		placement, err = selectUnverifiedCPUs(cpus)
+	} else {
+		placement, err = selectCPUs(cpus)
+	}
 	placement.description = "GetProcessTimes user+kernel time; " + placement.description
 	return placement, err
 }

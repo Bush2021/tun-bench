@@ -91,9 +91,7 @@ func (p *artifactPreparer) prepare(ctx context.Context, cases []benchmarkOptions
 		options.executable, options.version = binary.path, binary.version
 		supported = append(supported, options)
 	}
-	if !slices.ContainsFunc(supported, func(options benchmarkOptions) bool {
-		return slices.Contains([]string{"hev-socks5-tunnel", "xjasonlyu-tun2socks", "go-tun2socks", "mihomo"}, options.software)
-	}) {
+	if !slices.ContainsFunc(supported, benchmarkOptions.needsRelay) {
 		return supported, nil
 	}
 	relayOptions := common.Find(supported, func(options benchmarkOptions) bool {
@@ -111,7 +109,7 @@ func (p *artifactPreparer) prepare(ctx context.Context, cases []benchmarkOptions
 		relayExecutable = relayBinary.path
 	}
 	for i := range supported {
-		if slices.Contains([]string{"hev-socks5-tunnel", "xjasonlyu-tun2socks", "go-tun2socks", "mihomo"}, supported[i].software) {
+		if supported[i].needsRelay() {
 			supported[i].relayExecutable = relayExecutable
 		}
 	}
@@ -142,8 +140,12 @@ func (p *artifactPreparer) binary(ctx context.Context, software, version, source
 		if createErr != nil {
 			return binary, createErr
 		}
-		binary.path = filepath.Join(directory, "sing-box"+target.executableSuffix())
-		err = buildExecutable(ctx, sourcePackage, "./cmd/sing-box", binary.path, target, "with_gvisor")
+		binary.path = filepath.Join(directory, software+target.executableSuffix())
+		packageName := "./cmd/sing-box"
+		if software == "mihomo" {
+			packageName = "."
+		}
+		err = buildExecutable(ctx, sourcePackage, packageName, binary.path, target, "with_gvisor")
 	} else {
 		log.Info("Prepare ", software, " ", version, " for ", target.OS, "/", target.Arch)
 		p.client.operatingSystem, p.client.architecture = target.OS, target.Arch

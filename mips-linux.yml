@@ -1,0 +1,26 @@
+environments:
+  github-actions:
+    type: local
+    unverified-cpu: true # GitHub-hosted runners are virtual machines
+
+implementations:
+  sing-box:
+    version: 1.15.0-alpha.3
+  sing-box-socks:
+    type: sing-box
+    version: 1.15.0-alpha.3
+    relay: true
+  mihomo:
+    version: 1.19.31
+
+matrix:
+  - name: typical
+    implementation: [ sing-box, sing-box-socks, mihomo ]
+    ip: [ 4 ]
+    network: [ tcp ]
+    stack: [ sing-box/go, sing-box/gvisor, sing-box/system, sing-box-socks/go, sing-box-socks/gvisor, sing-box-socks/system, mihomo/gvisor, mihomo/system, mihomo/mips ]
+    mtu: [ 9000 ]
+    include:
+      - bitrate: 0
+      - parallel: 8
+      - bitrate: 1Gbps

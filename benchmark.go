@@ -33,6 +33,7 @@ type environment struct {
 	target        netip.Addr
 	cpus          []int
 	helperCPUs    []int
+	unverifiedCPU bool
 }
 
 type benchmark struct {
@@ -275,6 +276,15 @@ func (b *benchmark) startSubject(ctx context.Context, probePort int) error {
 	path := filepath.Join(b.directory, b.options.software+".json")
 	switch b.options.software {
 	case "sing-box":
+		outbound := option.Outbound{Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{}}
+		routeOptions := option.RawRouteOptionsActionOptions{OverrideAddress: b.options.loopback()}
+		if relayPort != 0 {
+			// The relay overrides the destination, as it does for mihomo.
+			outbound = option.Outbound{Type: C.TypeSOCKS, Tag: "relay", Options: &option.SOCKSOutboundOptions{
+				ServerOptions: option.ServerOptions{Server: relayAddress, ServerPort: uint16(relayPort)},
+			}}
+			routeOptions = option.RawRouteOptionsActionOptions{}
+		}
 		configuration := option.Options{
 			Log: &option.LogOptions{Level: "warn"},
 			Inbounds: []option.Inbound{{
@@ -287,9 +297,7 @@ func (b *benchmark) startSubject(ctx context.Context, probePort int) error {
 					MultiQueue:    b.options.multiQueue(),
 				},
 			}},
-			Outbounds: []option.Outbound{{
-				Type: C.TypeDirect, Tag: "direct", Options: &option.DirectOutboundOptions{},
-			}},
+			Outbounds: []option.Outbound{outbound},
 			Route: &option.RouteOptions{
 				Rules: []option.Rule{{
 					Type: C.RuleTypeDefault,
@@ -298,10 +306,8 @@ func (b *benchmark) startSubject(ctx context.Context, probePort int) error {
 						RuleAction: option.RuleAction{
 							Action: C.RuleActionTypeRoute,
 							RouteOptions: option.RouteActionOptions{
-								Outbound: "direct",
-								RawRouteOptionsActionOptions: option.RawRouteOptionsActionOptions{
-									OverrideAddress: b.options.loopback(),
-								},
+								Outbound:                     outbound.Tag,
+								RawRouteOptionsActionOptions: routeOptions,
 							},
 						},
 					},

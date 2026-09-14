@@ -21,13 +21,14 @@ import (
 )
 
 type workerRequest struct {
-	Environment string           `json:"environment"`
-	Local       bool             `json:"local,omitempty"`
-	OS          string           `json:"os"`
-	Arch        string           `json:"arch"`
-	FailFast    bool             `json:"fail_fast"`
-	Cases       []workerCase     `json:"cases"`
-	Report      *benchmarkReport `json:"report,omitempty"`
+	Environment   string           `json:"environment"`
+	Local         bool             `json:"local,omitempty"`
+	OS            string           `json:"os"`
+	Arch          string           `json:"arch"`
+	FailFast      bool             `json:"fail_fast"`
+	UnverifiedCPU bool             `json:"unverified_cpu,omitempty"`
+	Cases         []workerCase     `json:"cases"`
+	Report        *benchmarkReport `json:"report,omitempty"`
 }
 
 type workerCase struct {
@@ -39,6 +40,7 @@ type workerCase struct {
 	Iperf      string            `json:"iperf3"`
 	IperfArch  string            `json:"iperf3_arch,omitempty"`
 	Relay      string            `json:"relay,omitempty"`
+	UseRelay   bool              `json:"use_relay,omitempty"`
 }
 
 type workerUpdate struct {
@@ -54,7 +56,7 @@ func writeWorkerBundle(destination string, cases []benchmarkOptions, target envi
 	defer func() { returnErr = E.Errors(returnErr, file.Close()) }()
 	archive := tar.NewWriter(file)
 	defer func() { returnErr = E.Errors(returnErr, archive.Close()) }()
-	request := workerRequest{Environment: cases[0].environmentName, Local: target.Type == "local", OS: target.OS, Arch: target.Arch, Report: report, FailFast: failFast}
+	request := workerRequest{Environment: cases[0].environmentName, Local: target.Type == "local", OS: target.OS, Arch: target.Arch, Report: report, FailFast: failFast, UnverifiedCPU: target.UnverifiedCPU}
 	paths := make(map[string]string)
 	for _, options := range cases {
 		for _, executable := range []string{options.executable, options.iperf, options.relayExecutable} {
@@ -110,7 +112,7 @@ func writeWorkerBundle(destination string, cases []benchmarkOptions, target envi
 		}
 		request.Cases = append(request.Cases, workerCase{
 			Case:     options.caseConfiguration,
-			Software: options.software, Executable: paths[options.executable], Package: options.sourcePackage, Version: options.version, Iperf: paths[options.iperf], IperfArch: options.iperfArchitecture, Relay: paths[options.relayExecutable],
+			Software: options.software, Executable: paths[options.executable], Package: options.sourcePackage, Version: options.version, Iperf: paths[options.iperf], IperfArch: options.iperfArchitecture, Relay: paths[options.relayExecutable], UseRelay: options.relay,
 		})
 	}
 	content, err := json.Marshal(request)
@@ -224,6 +226,7 @@ func runWorker(ctx context.Context, input io.Reader, output io.Writer, bundlePat
 			environmentName:   request.Environment, operatingSystem: request.OS,
 			software: entry.Software, sourcePackage: entry.Package, version: entry.Version,
 			executable: executable, iperf: iperf, iperfArchitecture: entry.IperfArch, relayExecutable: relay,
+			relay: entry.UseRelay,
 		})
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -234,25 +237,26 @@ func runWorker(ctx context.Context, input io.Reader, output io.Writer, bundlePat
 		cancel()
 	}()
 	encoder := json.NewEncoder(output)
-	runner := benchmarkMatrix{directory: directory, cases: cases, report: request.Report, failFast: request.FailFast, saveReport: func(report *benchmarkReport, started *caseResult) error {
+	runner := benchmarkMatrix{directory: directory, cases: cases, report: request.Report, failFast: request.FailFast, unverifiedCPU: request.UnverifiedCPU, saveReport: func(report *benchmarkReport, started *caseResult) error {
 		return encoder.Encode(workerUpdate{Report: report, Started: started})
 	}}
 	return runner.run(ctx)
 }
 
 type benchmarkMatrix struct {
-	directory   string
-	cases       []benchmarkOptions
-	environment environment
-	failFast    bool
-	report      *benchmarkReport
-	caseIndexes []int
-	saveReport  func(*benchmarkReport, *caseResult) error
+	directory     string
+	cases         []benchmarkOptions
+	environment   environment
+	failFast      bool
+	unverifiedCPU bool
+	report        *benchmarkReport
+	caseIndexes   []int
+	saveReport    func(*benchmarkReport, *caseResult) error
 }
 
 func (m *benchmarkMatrix) run(ctx context.Context) (returnErr error) {
 	var err error
-	m.environment, err = preparePlatform()
+	m.environment, err = preparePlatform(m.unverifiedCPU)
 	if err != nil {
 		return err
 	}
@@ -407,6 +411,7 @@ func (m *benchmarkMatrix) prepareReport() error {
 		Metric: m.environment.metric, Description: m.environment.description,
 		TunnelCPUs: m.environment.cpus, HelperCPUs: m.environment.helperCPUs,
 		TunnelWorkers: m.environment.workers, HelperWorkers: m.environment.helpers,
+		UnverifiedCPU: m.environment.unverifiedCPU,
 	}
 	if m.report == nil {
 		m.report = &benchmarkReport{
@@ -418,7 +423,7 @@ func (m *benchmarkMatrix) prepareReport() error {
 		if measured {
 			previous := m.report.Environment
 			if previous.OS != placement.OS || previous.Arch != placement.Arch || previous.Hostname != placement.Hostname ||
-				previous.Metric != placement.Metric || previous.TunnelWorkers != placement.TunnelWorkers || previous.HelperWorkers != placement.HelperWorkers ||
+				previous.Metric != placement.Metric || previous.TunnelWorkers != placement.TunnelWorkers || previous.HelperWorkers != placement.HelperWorkers || previous.UnverifiedCPU != placement.UnverifiedCPU ||
 				!slices.Equal(previous.TunnelCPUs, placement.TunnelCPUs) || !slices.Equal(previous.HelperCPUs, placement.HelperCPUs) {
 				return E.New("result environment differs; use another output path or --overwrite")
 			}
@@ -432,7 +437,7 @@ func (m *benchmarkMatrix) prepareReport() error {
 		_, loaded := m.report.Implementations[options.Implementation]
 		if !loaded {
 			m.report.Implementations[options.Implementation] = implementationConfiguration{
-				Type: options.software, Path: options.executable, Package: options.sourcePackage, Version: options.version,
+				Type: options.software, Path: options.executable, Package: options.sourcePackage, Version: options.version, Relay: options.relay,
 			}
 		}
 		implementation := m.report.Implementations[options.Implementation]

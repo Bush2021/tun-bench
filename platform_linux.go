@@ -25,7 +25,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func preparePlatform() (environment, error) {
+func preparePlatform(unverifiedCPU bool) (environment, error) {
 	var allowed unix.CPUSet
 	err := unix.SchedGetaffinity(0, &allowed)
 	if err != nil {
@@ -36,25 +36,42 @@ func preparePlatform() (environment, error) {
 		if !allowed.IsSet(cpu) {
 			continue
 		}
-		info, infoErr := linuxCPUInfo(cpu)
+		var info cpuInfo
+		var infoErr error
+		if unverifiedCPU {
+			info, infoErr = linuxCPUCore(cpu)
+		} else {
+			info, infoErr = linuxCPUInfo(cpu)
+		}
 		if infoErr != nil {
 			return environment{}, infoErr
 		}
 		cpus = append(cpus, info)
 	}
-	placement, err := selectCPUs(cpus)
+	var placement environment
+	if unverifiedCPU {
+		placement, err = selectUnverifiedCPUs(cpus)
+	} else {
+		placement, err = selectCPUs(cpus)
+	}
 	placement.description = "/proc/PID/stat user+system time; " + placement.description
 	return placement, err
 }
 
+func linuxCPUCore(cpu int) (cpuInfo, error) {
+	core, err := os.ReadFile(fmt.Sprintf("/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", cpu))
+	if err != nil {
+		return cpuInfo{id: cpu}, err
+	}
+	return cpuInfo{id: cpu, core: strings.TrimSpace(string(core))}, nil
+}
+
 func linuxCPUInfo(cpu int) (cpuInfo, error) {
-	info := cpuInfo{id: cpu}
-	base := fmt.Sprintf("/sys/devices/system/cpu/cpu%d", cpu)
-	core, err := os.ReadFile(filepath.Join(base, "topology/thread_siblings_list"))
+	info, err := linuxCPUCore(cpu)
 	if err != nil {
 		return info, err
 	}
-	info.core = strings.TrimSpace(string(core))
+	base := fmt.Sprintf("/sys/devices/system/cpu/cpu%d", cpu)
 	info.kind, info.capacity, err = architectureCPUKind(cpu)
 	if err != nil {
 		return info, err

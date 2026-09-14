@@ -1,0 +1,95 @@
+name: bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: Configuration file for every runner (empty uses mips-<os>.yml)
+        required: false
+        default: ""
+      matrix:
+        description: Run only the matrix with this name (empty runs all)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            runner: ubuntu-latest
+            config: mips-linux.yml
+          - name: windows
+            runner: windows-latest
+            config: mips-windows.yml
+          - name: macos
+            runner: macos-latest
+            config: mips-macos.yml
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - name: Show CPU topology
+        run: |
+          case "$RUNNER_OS" in
+            Linux) lscpu ;;
+            macOS) sysctl hw.ncpu hw.physicalcpu hw.perflevel0.physicalcpu hw.perflevel1.physicalcpu machdep.cpu.brand_string 2>/dev/null || true ;;
+            Windows) powershell -NoProfile -Command "Get-CimInstance Win32_Processor | Format-List Name,NumberOfCores,NumberOfLogicalProcessors" ;;
+          esac
+
+      - name: Build tun-bench
+        run: go build -trimpath -ldflags=-checklinkname=0 -o "tun-bench$(go env GOEXE)" .
+
+      - name: Run benchmark
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONFIG: ${{ inputs.config != '' && inputs.config || matrix.config }}
+          MATRIX_NAME: ${{ inputs.matrix }}
+        run: |
+          mkdir -p results
+          args=(run "$CONFIG" -o "results/${{ matrix.name }}.json")
+          if [ -n "$MATRIX_NAME" ]; then
+            args+=(--name "$MATRIX_NAME")
+          fi
+          "./tun-bench$(go env GOEXE)" "${args[@]}"
+
+      - name: Format results
+        if: always()
+        run: |
+          result="results/${{ matrix.name }}.json"
+          if [ ! -f "$result" ]; then
+            echo "No results were written." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          "./tun-bench$(go env GOEXE)" format "$result" | tee "results/${{ matrix.name }}.txt"
+          {
+            echo "## ${{ matrix.name }}"
+            echo '```'
+            cat "results/${{ matrix.name }}.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ matrix.name }}
+          path: results/
+          if-no-files-found: ignore

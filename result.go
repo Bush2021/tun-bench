@@ -48,6 +48,7 @@ type resultEnvironment struct {
 	HelperCPUs    []int          `json:"helper_cpus,omitempty"`
 	TunnelWorkers int            `json:"tunnel_workers"`
 	HelperWorkers int            `json:"helper_workers"`
+	UnverifiedCPU bool           `json:"unverified_cpu,omitempty"`
 }
 
 const benchmarkForwarding = "direct"

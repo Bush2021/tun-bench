@@ -15,7 +15,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -319,7 +321,29 @@ func releaseAssetName(software, version, operatingSystem, architecture string) (
 	}
 }
 
+const releaseDownloadAttempts = 3
+
 func (c *releaseClient) download(ctx context.Context, asset releaseAsset) (string, error) {
+	var err error
+	for attempt := range releaseDownloadAttempts {
+		if attempt > 0 {
+			log.Warn("Retry downloading ", asset.GetName(), " after error: ", err)
+			select {
+			case <-ctx.Done():
+				return "", E.Errors(err, ctx.Err())
+			case <-time.After(time.Duration(attempt) * 5 * time.Second):
+			}
+		}
+		var destination string
+		destination, err = c.downloadOnce(ctx, asset)
+		if err == nil {
+			return destination, nil
+		}
+	}
+	return "", err
+}
+
+func (c *releaseClient) downloadOnce(ctx context.Context, asset releaseAsset) (string, error) {
 	directory := filepath.Join(c.cache, "downloads", strconv.FormatInt(asset.GetID(), 10))
 	destination := filepath.Join(directory, asset.GetName())
 	err := asset.verify(destination)

@@ -77,7 +77,7 @@ func (m *environmentMatrix) run(ctx context.Context) (returnErr error) {
 				if options.version == "latest" && implementation.Version != "" {
 					options.version = implementation.Version
 				}
-				if options.software != implementation.Type || options.version != implementation.Version || options.sourcePackage != implementation.Package {
+				if options.software != implementation.Type || options.version != implementation.Version || options.sourcePackage != implementation.Package || options.relay != implementation.Relay {
 					return E.New("implementation ", options.Implementation, " in environment ", name, " differs from saved results; use a new name, another output path or --overwrite")
 				}
 			}

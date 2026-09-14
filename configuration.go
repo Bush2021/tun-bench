@@ -32,6 +32,8 @@ type environmentConfiguration struct {
 	User         string `yaml:"user" json:"user,omitempty"`
 	Port         int    `yaml:"port" json:"port,omitempty"`
 	IdentityFile string `yaml:"identity-file" json:"identity_file,omitempty"`
+	// UnverifiedCPU splits logical CPUs without verifying physical cores, for virtual machines.
+	UnverifiedCPU bool `yaml:"unverified-cpu" json:"unverified_cpu,omitempty"`
 }
 
 func (e *environmentConfiguration) applyDefaults() {
@@ -124,6 +126,8 @@ type implementationConfiguration struct {
 	Version string `yaml:"version" json:"version,omitempty"`
 	Stack   string `yaml:"stack" json:"stack,omitempty"`
 	Arch    string `yaml:"-" json:"arch,omitempty"`
+	// Relay forwards sing-box through the SOCKS5 relay like other SOCKS5-based implementations.
+	Relay bool `yaml:"relay" json:"relay,omitempty"`
 }
 
 type matrixConfiguration struct {
@@ -264,8 +268,11 @@ func readConfiguration(path, matrixName, measurementType string) (runConfigurati
 			if implementation.Package != "" && implementation.Version != "" {
 				return configuration, nil, E.New(name, ": package and version are mutually exclusive")
 			}
-			if implementation.Package != "" && implementation.Type != "sing-box" {
-				return configuration, nil, E.New(name, ": package is only supported by sing-box")
+			if implementation.Package != "" && implementation.Type != "sing-box" && implementation.Type != "mihomo" {
+				return configuration, nil, E.New(name, ": package is only supported by sing-box and mihomo")
+			}
+			if implementation.Relay && implementation.Type != "sing-box" {
+				return configuration, nil, E.New(name, ": relay is only supported by sing-box")
 			}
 			if implementation.Package == "" && implementation.Version == "" {
 				implementation.Version = "latest"
@@ -304,7 +311,7 @@ func readConfiguration(path, matrixName, measurementType string) (runConfigurati
 			},
 			environmentName: environmentName, operatingSystem: target.OS,
 			sourcePackage: implementation.Package, software: implementation.Type,
-			version: implementation.Version, iperf: iperf,
+			version: implementation.Version, iperf: iperf, relay: implementation.Relay,
 		}
 		for key, value := range entry {
 			switch key {

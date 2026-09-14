@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,7 +40,12 @@ type benchmarkOptions struct {
 	iperf             string
 	iperfArchitecture string
 	relayExecutable   string
+	relay             bool
 	queues            int
+}
+
+func (o benchmarkOptions) needsRelay() bool {
+	return o.relay || slices.Contains([]string{"hev-socks5-tunnel", "xjasonlyu-tun2socks", "go-tun2socks", "mihomo"}, o.software)
 }
 
 func (o caseConfiguration) validate() error {

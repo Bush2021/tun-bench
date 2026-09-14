@@ -61,7 +61,8 @@ func readRusage(pid int, flavor int32) (rusageInfo, error) {
 	return info, nil
 }
 
-func preparePlatform() (environment, error) {
+// macOS never pins processes, so unverified CPU placement changes nothing.
+func preparePlatform(_ bool) (environment, error) {
 	placement := environment{workers: runtime.NumCPU(), helpers: runtime.NumCPU()}
 	info, err := readRusage(os.Getpid(), 6)
 	if err == nil && info.EnergyNanojoules > 0 {
