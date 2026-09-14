@@ -25,13 +25,13 @@ jobs:
       matrix:
         include:
           - name: linux
-            runner: ubuntu-latest
+            runner: ubuntu-26.04-arm
             config: mips-linux.yml
           - name: windows
             runner: windows-latest
             config: mips-windows.yml
           - name: macos
-            runner: macos-latest
+            runner: xcode-27
             config: mips-macos.yml
     defaults:
       run:
